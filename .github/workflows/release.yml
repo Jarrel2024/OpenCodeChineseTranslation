@@ -157,7 +157,16 @@ jobs:
           else echo "tag=$PUSH_TAG" >> $GITHUB_OUTPUT; fi
 
       - id: date
-        run: echo "ts=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M CST')" >> $GITHUB_OUTPUT
+        run: echo "ts=$(TZ=Asia/Shanghai date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_OUTPUT
+
+      - name: Delete existing tag and release
+        continue-on-error: true
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh api repos/${{ github.repository }}/releases/tags/$TAG -q '.id' 2>/dev/null | xargs -r gh api repos/${{ github.repository }}/releases/ -X DELETE
+          gh api repos/${{ github.repository }}/git/refs/tags/$TAG -X DELETE 2>/dev/null || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -166,12 +175,12 @@ jobs:
           merge-multiple: true
 
       - run: |
-          TAG=${{ steps.tag.outputs.tag }}
-          zip -r dist/opencode-i18n-tool-${TAG}.zip cli-go/ install.ps1 install.sh README.md CHANGELOG.md -x "cli-go/.git/*" "*.exe"
+          TAG="${{ steps.tag.outputs.tag }}"
+          zip -r "dist/opencode-i18n-tool-${TAG}.zip" cli-go/ install.ps1 install.sh README.md CHANGELOG.md -x "cli-go/.git/*" "*.exe"
 
       - run: |
-          VERSION=${{ steps.tag.outputs.tag }}
-          TS=${{ steps.date.outputs.ts }}
+          VERSION="${{ steps.tag.outputs.tag }}"
+          TS="${{ steps.date.outputs.ts }}"
           cat > release_notes.md <<- EOF
           ## OpenCode Chinese Edition
 
