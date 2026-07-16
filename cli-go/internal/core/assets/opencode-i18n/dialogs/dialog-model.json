@@ -3,12 +3,12 @@
   "description": "模型选择对话框",
   "replacements": {
     "return \"Select model\"": "return \"选择模型\"",
-    "\"Favorites\"": "category: \"收藏\"",
+    "\"Favorites\"": "\"收藏\"",
     "category: \"Popular providers\"": "category: \"热门提供商\"",
     "title: connected() ? \"Connect provider\" : \"View all providers\"": "title: connected() ? \"连接提供商\" : \"查看所有提供商\"",
     "\"Free\"": "\"免费\"",
     "(Favorite)": "(收藏)",
-    "\"Recent\"": "category: \"最近\"",
+    "\"Recent\"": "\"最近\"",
     "title: \"Favorite\"": "title: \"收藏\""
   }
 }
