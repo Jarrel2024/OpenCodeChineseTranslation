@@ -139,16 +139,7 @@ jobs:
           git clone --depth 1 --branch "$TAG" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN || \
           git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
 
-      - run: |
-          python3 -c "
-import re
-with open('opencode-zh-CN/packages/opencode/script/build.ts') as f:
-    c = f.read()
-c = re.sub(r'\s*\{\s*\n\s*os:\s*\"win32\",\s*\n\s*arch:\s*\"arm64\",\s*\n\s*\},', '', c)
-with open('opencode-zh-CN/packages/opencode/script/build.ts', 'w') as f:
-    f.write(c)
-print('done')
-"
+      - run: python3 scripts/patch-build-ts.py opencode-zh-CN/packages/opencode/script/build.ts
 
       - run: ./opencode-cli apply
         env:
