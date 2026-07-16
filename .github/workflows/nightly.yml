@@ -173,6 +173,31 @@ jobs:
           git clone --depth 1 --branch "$TAG" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN 2>/dev/null || \
           git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
 
+      - name: Patch upstream build script
+        run: |
+          python3 -c "
+path = 'opencode-zh-CN/packages/opencode/script/build.ts'
+with open(path) as f:
+    lines = f.readlines()
+# 找到并移除 win32-arm64 的整个对象块（4行）
+new_lines = []
+skip = 0
+for i, line in enumerate(lines):
+    if skip > 0:
+        skip -= 1
+        continue
+    stripped = line.strip()
+    if stripped == '{' and i + 3 < len(lines):
+        block = ''.join(lines[i:i+4])
+        if '\"win32\"' in block and '\"arm64\"' in block:
+            skip = 4  # 跳过 { ... }, 共4行
+            continue
+    new_lines.append(line)
+with open(path, 'w') as f:
+    f.writelines(new_lines)
+print('Removed win32-arm64 target from build.ts')
+"
+
       - name: Apply Chinese translation
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
