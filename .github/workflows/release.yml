@@ -1,4 +1,4 @@
-name: Build OpenCode Chinese
+name: OpenCode Chinese Build
 
 on:
   push:
@@ -8,12 +8,12 @@ on:
     - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
-      tag_name:
-        description: 'Tag name for release (e.g., v8.1.0)'
+      upstream_tag:
+        description: 'Upstream release tag (e.g., v1.18.2)'
         required: false
         type: string
-      upstream_tag:
-        description: 'Upstream release tag to build from (e.g., v1.18.2)'
+      release_tag:
+        description: 'Release tag for this build (defaults to upstream_tag)'
         required: false
         type: string
 
@@ -25,55 +25,34 @@ env:
 
 jobs:
   check-upstream:
-    name: Check Upstream Release
+    name: Check Upstream
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
     outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
       upstream_tag: ${{ steps.check.outputs.upstream_tag }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Check for new upstream release
-        id: check
+      - uses: actions/checkout@v4
+      - id: check
         run: |
-          echo "Fetching latest release from ${{ env.UPSTREAM_REPO }}..."
-          UPSTREAM_RELEASE=$(curl -sL https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest)
-          LATEST_TAG=$(echo "$UPSTREAM_RELEASE" | jq -r '.tag_name')
-          echo "Latest upstream release: $LATEST_TAG"
-          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          LAST_TAG=""
-          if [ -f ".release-state" ]; then
-            LAST_TAG=$(cat .release-state | head -1)
-          fi
-          if [ "$LATEST_TAG" != "$LAST_TAG" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "upstream_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          fi
+          LATEST=$(curl -sL https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest | jq -r '.tag_name')
+          [ -z "$LATEST" ] || [ "$LATEST" = "null" ] && { echo "upstream_tag=" >> $GITHUB_OUTPUT; exit 0; }
+          LAST=""; [ -f .release-state ] && LAST=$(head -1 .release-state)
+          [ "$LATEST" != "$LAST" ] && echo "upstream_tag=$LATEST" >> $GITHUB_OUTPUT || echo "upstream_tag=" >> $GITHUB_OUTPUT
 
   build-cli:
-    name: Build CLI Tool
+    name: CLI Tool
     runs-on: ubuntu-latest
     needs: check-upstream
-    if: always() && (github.event_name != 'schedule' || needs.check-upstream.outputs.should_build == 'true')
+    if: always() && (github.event_name != 'schedule' || needs.check-upstream.outputs.upstream_tag != '')
     strategy:
       matrix:
         include:
           - os: windows
             arch: amd64
-            ext: .exe
           - os: linux
             arch: amd64
-            ext: ""
           - os: darwin
             arch: arm64
-            ext: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -81,7 +60,8 @@ jobs:
           go-version-file: cli-go/go.mod
       - run: |
           cd cli-go
-          go build -ldflags="-s -w" -o ../dist/opencode-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} .
+          EXT=""; [ "${{ matrix.os }}" = "windows" ] && EXT=".exe"
+          go build -ldflags="-s -w" -o "../dist/opencode-cli-${{ matrix.os }}-${{ matrix.arch }}${EXT}" .
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
@@ -92,22 +72,15 @@ jobs:
           path: dist/*
 
   build-opencode:
-    name: Build OpenCode Chinese
+    name: OpenCode ${{ matrix.platform }}
     runs-on: ubuntu-latest
     needs: [check-upstream, build-cli]
-    if: always() && (github.event_name != 'schedule' || needs.check-upstream.outputs.should_build == 'true') && needs.build-cli.result == 'success'
+    if: always() && (github.event_name != 'schedule' || needs.check-upstream.outputs.upstream_tag != '') && needs.build-cli.result == 'success'
     strategy:
       matrix:
-        include:
-          - platform: windows-x64
-          - platform: linux-x64
-          - platform: linux-arm64
-          - platform: darwin-x64
-          - platform: darwin-arm64
+        platform: [windows-x64, linux-x64, linux-arm64, darwin-x64, darwin-arm64]
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: cli-go/go.mod
@@ -116,26 +89,21 @@ jobs:
           bun-version: '1.3.8'
 
       - run: |
-          cd cli-go
-          go build -o ../opencode-cli .
+          cd cli-go && go build -o ../opencode-cli .
 
-      - id: version
+      - id: tag
         run: |
           SCHEDULE_TAG="${{ needs.check-upstream.outputs.upstream_tag }}"
-          DISPATCH_TAG="${{ github.event.inputs.upstream_tag }}"
-          if [ -n "$SCHEDULE_TAG" ]; then
-            echo "tag=$SCHEDULE_TAG" >> $GITHUB_OUTPUT
-          elif [ -n "$DISPATCH_TAG" ]; then
-            echo "tag=$DISPATCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.event.inputs.tag_name || github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
+          DISPATCH_UPSTREAM="${{ github.event.inputs.upstream_tag }}"
+          DISPATCH_RELEASE="${{ github.event.inputs.release_tag }}"
+          PUSH_TAG="${{ github.ref_name }}"
+          if [ -n "$SCHEDULE_TAG" ]; then echo "upstream=$SCHEDULE_TAG" >> $GITHUB_OUTPUT; echo "release=$SCHEDULE_TAG" >> $GITHUB_OUTPUT
+          elif [ -n "$DISPATCH_UPSTREAM" ]; then echo "upstream=$DISPATCH_UPSTREAM" >> $GITHUB_OUTPUT; echo "release=${DISPATCH_RELEASE:-$DISPATCH_UPSTREAM}" >> $GITHUB_OUTPUT
+          else echo "upstream=$PUSH_TAG" >> $GITHUB_OUTPUT; echo "release=$PUSH_TAG" >> $GITHUB_OUTPUT; fi
 
       - run: |
-          git clone --depth 1 --branch "$TAG" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN || \
+          git clone --depth 1 --branch "${{ steps.tag.outputs.upstream }}" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN || \
           git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
-        env:
-          TAG: ${{ steps.version.outputs.tag }}
 
       - run: python3 scripts/patch-build-ts.py opencode-zh-CN/packages/opencode/script/build.ts
 
@@ -143,25 +111,19 @@ jobs:
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
 
-      - run: |
-          echo "Building for ${{ matrix.platform }}"
-          ./opencode-cli build --platform ${{ matrix.platform }} --deploy=false
+      - run: ./opencode-cli build --platform ${{ matrix.platform }} --deploy=false
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
 
       - run: |
-          TAG=${{ steps.version.outputs.tag }}
+          TAG=${{ steps.tag.outputs.release }}
           PLATFORM=${{ matrix.platform }}
-          PACKAGE_NAME="opencode-zh-CN-${TAG}-${PLATFORM}"
-          BUILD_DIR="opencode-zh-CN/packages/opencode/dist/opencode-${PLATFORM}/bin"
           mkdir -p dist
-          if [ "$PLATFORM" = "windows-x64" ]; then
-            BINARY="${BUILD_DIR}/opencode.exe"
-          else
-            BINARY="${BUILD_DIR}/opencode"
-          fi
+          DIR="opencode-zh-CN/packages/opencode/dist/opencode-${PLATFORM}/bin"
+          EXT=""; case "$PLATFORM" in windows*) EXT=".exe";; esac
+          BINARY="$DIR/opencode$EXT"
           if [ -f "$BINARY" ]; then
-            zip -j dist/${PACKAGE_NAME}.zip "$BINARY"
+            zip -j dist/opencode-zh-CN-${TAG}-${PLATFORM}.zip "$BINARY"
           else
             echo "Binary not found: $BINARY"
             find opencode-zh-CN -name "opencode*" -type f 2>/dev/null | head -20
@@ -174,7 +136,7 @@ jobs:
           path: dist/*.zip
 
   release:
-    name: Create Release
+    name: Publish Release
     needs: [check-upstream, build-cli, build-opencode]
     if: always() && needs.build-cli.result == 'success' && needs.build-opencode.result == 'success'
     runs-on: ubuntu-latest
@@ -184,77 +146,77 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      - id: date
-        env:
-          TZ: 'Asia/Shanghai'
-        run: echo "timestamp=$(date +'%Y-%m-%d %H:%M CST')" >> $GITHUB_OUTPUT
-
-      - id: version
+      - id: tag
         run: |
           SCHEDULE_TAG="${{ needs.check-upstream.outputs.upstream_tag }}"
-          DISPATCH_TAG="${{ github.event.inputs.upstream_tag }}"
-          if [ -n "$SCHEDULE_TAG" ]; then
-            echo "tag=$SCHEDULE_TAG" >> $GITHUB_OUTPUT
-          elif [ -n "$DISPATCH_TAG" ]; then
-            echo "tag=$DISPATCH_TAG" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.event.inputs.tag_name || github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
+          DISPATCH_UPSTREAM="${{ github.event.inputs.upstream_tag }}"
+          DISPATCH_RELEASE="${{ github.event.inputs.release_tag }}"
+          PUSH_TAG="${{ github.ref_name }}"
+          if [ -n "$SCHEDULE_TAG" ]; then echo "tag=$SCHEDULE_TAG" >> $GITHUB_OUTPUT
+          elif [ -n "$DISPATCH_UPSTREAM" ]; then echo "tag=${DISPATCH_RELEASE:-$DISPATCH_UPSTREAM}" >> $GITHUB_OUTPUT
+          else echo "tag=$PUSH_TAG" >> $GITHUB_OUTPUT; fi
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - id: date
+        run: echo "ts=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M CST')" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
         with:
           pattern: '*'
           path: dist
           merge-multiple: true
 
       - run: |
-          TAG=${{ steps.version.outputs.tag }}
-          zip -r dist/opencode-i18n-tool-${TAG}.zip cli-go/ install.ps1 install.sh README.md CHANGELOG.md -x "cli-go/.git/*" -x "*.exe"
+          TAG=${{ steps.tag.outputs.tag }}
+          zip -r dist/opencode-i18n-tool-${TAG}.zip cli-go/ install.ps1 install.sh README.md CHANGELOG.md -x "cli-go/.git/*" "*.exe"
 
-      - name: Generate Release Notes
-        env:
-          VERSION: ${{ steps.version.outputs.tag }}
-          TIMESTAMP: ${{ steps.date.outputs.timestamp }}
-        run: |
-          cat > release_notes.md << 'EOF'
-          ## OpenCode 中文汉化版
-          > 根据上游 Release 自动构建
+      - run: |
+          VERSION=${{ steps.tag.outputs.tag }}
+          TS=${{ steps.date.outputs.ts }}
+          cat > release_notes.md <<- EOF
+          ## OpenCode Chinese Edition
 
-          ### 下载
+          **Upstream:** \`$VERSION\`
+          **Built:** $TS
 
-          | 平台 | CLI | OpenCode |
-          |------|-----|---------|
+          | Platform | CLI | OpenCode |
+          |----------|-----|----------|
+          | Windows x64 | \`opencode-cli-windows-amd64.exe\` | \`opencode-zh-CN-${VERSION}-windows-x64.zip\` |
+          | macOS Apple Silicon | \`opencode-cli-darwin-arm64\` | \`opencode-zh-CN-${VERSION}-darwin-arm64.zip\` |
+          | macOS Intel | \`opencode-cli-darwin-amd64\` | \`opencode-zh-CN-${VERSION}-darwin-x64.zip\` |
+          | Linux x64 | \`opencode-cli-linux-amd64\` | \`opencode-zh-CN-${VERSION}-linux-x64.zip\` |
+          | Linux ARM64 | \`opencode-cli-linux-arm64\` | \`opencode-zh-CN-${VERSION}-linux-arm64.zip\` |
+
+          > Windows ARM64 is not supported (Bun lacks Windows ARM64 runtime builds).
+
+          ## Quick Install
+
+          **Windows (PowerShell)**
+          \`\`\`
+          powershell -c "irm https://cdn.jsdelivr.net/gh/1186258278/OpenCodeChineseTranslation@main/install.ps1 | iex"
+          \`\`\`
+
+          **Linux / macOS**
+          \`\`\`bash
+          curl -fsSL https://cdn.jsdelivr.net/gh/1186258278/OpenCodeChineseTranslation@main/install.sh | bash
+          \`\`\`
           EOF
-          echo "| Windows x64 | \`opencode-cli-windows-amd64.exe\` | \`opencode-zh-CN-${VERSION}-windows-x64.zip\` |" >> release_notes.md
-          echo "| macOS Apple Silicon | \`opencode-cli-darwin-arm64\` | \`opencode-zh-CN-${VERSION}-darwin-arm64.zip\` |" >> release_notes.md
-          echo "| macOS Intel | \`opencode-cli-darwin-amd64\` | \`opencode-zh-CN-${VERSION}-darwin-x64.zip\` |" >> release_notes.md
-          echo "| Linux x64 | \`opencode-cli-linux-amd64\` | \`opencode-zh-CN-${VERSION}-linux-x64.zip\` |" >> release_notes.md
-          echo "| Linux ARM64 | \`opencode-cli-linux-arm64\` | \`opencode-zh-CN-${VERSION}-linux-arm64.zip\` |" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "---" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "上游版本: $VERSION" >> release_notes.md
-          echo "构建时间: $TIMESTAMP" >> release_notes.md
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "OpenCode ${{ steps.version.outputs.tag }} 汉化版 (${{ steps.date.outputs.timestamp }})"
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "OpenCode ${{ steps.tag.outputs.tag }} 汉化版 (${{ steps.date.outputs.ts }})"
           body_path: release_notes.md
           files: dist/*
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - if: github.event_name == 'schedule'
         env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          echo "$RELEASE_TAG" > .release-state
+          echo "$TAG" > .release-state
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .release-state
-          git commit -m "chore: update release state [skip ci]" || true
+          git commit -m "chore: update state [skip ci]" || true
           git push || true
