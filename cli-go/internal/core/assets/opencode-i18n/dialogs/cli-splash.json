@@ -1,0 +1,9 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/splash.ts",
+    "description": "启屏画面的会话标题和标签",
+    "replacements": {
+        "Untitled session": "未命名会话",
+        "Session": "会话",
+        "Continue": "继续"
+    }
+}

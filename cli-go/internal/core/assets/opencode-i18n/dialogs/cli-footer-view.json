@@ -1,0 +1,21 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/footer.view.tsx",
+    "description": "底部状态栏模式标签、状态提示、上下文提示和键盘绑定标题",
+    "replacements": {
+        "EXIT": "退出",
+        "SHELL": "命令行",
+        "BUILD": "构建",
+        "again to interrupt": "再次中断",
+        "interrupt": "中断",
+        "Shell mode": "命令行模式",
+        "background": "后台",
+        "subagents": "子代理",
+        "Open command palette": "打开命令面板",
+        "Cycle model variant": "循环切换模型变体",
+        "Background subagents": "后台子代理",
+        "View subagents": "查看子代理",
+        "Manage queued prompts": "管理队列提示",
+        "normal": "普通",
+        "cmd": "命令"
+    }
+}

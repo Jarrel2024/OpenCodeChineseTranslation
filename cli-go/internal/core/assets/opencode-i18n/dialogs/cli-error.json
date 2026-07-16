@@ -1,0 +1,15 @@
+{
+    "file": "packages/opencode/src/cli/error.ts",
+    "description": "CLI 错误消息（仅简单字符串部分）",
+    "replacements": {
+        "Model not found": "模型未找到",
+        "Did you mean": "您是不是要找",
+        "Try: \\`opencode models\\` to list available models": "试试：\\`opencode models\\` 列出可用模型",
+        "Or check your config (opencode.json) provider/model names": "或检查配置文件 (opencode.json) 中的提供商/模型名称",
+        "Failed to initialize provider": "初始化提供商失败",
+        "Check credentials and configuration.": "请检查凭据和配置。",
+        "is not valid JSON(C)": "不是有效的 JSON(C)",
+        "is not valid. Rename the directory to": "无效。请将目录重命名为",
+        "or remove it. This is a common typo.": "或移除它。这是常见拼写错误。"
+    }
+}

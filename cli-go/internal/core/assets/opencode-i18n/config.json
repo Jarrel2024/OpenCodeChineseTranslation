@@ -39,7 +39,16 @@
                                     "dialogs/dialog-tag.json",
                                     "dialogs/dialog-theme.json",
                                     "dialogs/dialog-timeline.json",
-                                    "dialogs/dialog-toast.json"
+                                    "dialogs/dialog-toast.json",
+                                    "dialogs/cli-footer-view.json",
+                                    "dialogs/cli-footer-command.json",
+                                    "dialogs/cli-prompt.json",
+                                    "dialogs/cli-permission.json",
+                                    "dialogs/cli-permission-ui.json",
+                                    "dialogs/cli-question.json",
+                                    "dialogs/cli-error.json",
+                                    "dialogs/cli-splash.json",
+                                    "dialogs/cli-subagent.json"
                                 ],
                     "routes":  [
                                    "routes/route-footer.json",

@@ -1,0 +1,12 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/footer.permission.tsx",
+    "description": "权限对话框 UI 标题和状态文本",
+    "replacements": {
+        "Always allow": "始终允许",
+        "Reject permission": "拒绝权限",
+        "Permission required": "需要权限",
+        "Tell OpenCode what to do differently": "告诉 OpenCode 如何调整",
+        "Waiting for permission event...": "等待权限事件...",
+        "No diff provided": "未提供差异内容"
+    }
+}

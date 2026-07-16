@@ -1,0 +1,7 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/footer.subagent.tsx",
+    "description": "子代理检查器空状态文本",
+    "replacements": {
+        "No subagent activity yet": "暂无子代理活动"
+    }
+}

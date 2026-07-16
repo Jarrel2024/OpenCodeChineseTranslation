@@ -1,0 +1,27 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/footer.prompt.tsx",
+    "description": "提示输入框占位文本、斜杠命令描述、绑定标题和状态消息",
+    "replacements": {
+        "Run a command... \"git status\"": "执行命令... \"git status\"",
+        "Ask anything... \"Fix a TODO in the codebase\"": "随意提问... \"修复代码中的 TODO\"",
+        "compose in your external editor": "在外部编辑器中编写",
+        "start a new session": "开始新会话",
+        "close OpenCode": "关闭 OpenCode",
+        "browse available skills": "浏览可用技能",
+        "failed to open editor": "打开编辑器失败",
+        "waiting for current response": "等待当前响应完成",
+        "empty prompt ignored": "已忽略空提示",
+        "loading commands": "命令加载中",
+        "Clear prompt or exit": "清除提示或退出",
+        "Interrupt session": "中断会话",
+        "Open editor": "打开编辑器",
+        "Previous prompt history": "上一条提示历史",
+        "Next prompt history": "下一条提示历史",
+        "Previous autocomplete item": "上一个自动补全项",
+        "Next autocomplete item": "下一个自动补全项",
+        "Hide autocomplete": "隐藏自动补全",
+        "Select autocomplete item": "选择自动补全项",
+        "Complete autocomplete item": "确认自动补全项",
+        "Autocomplete": "自动补全"
+    }
+}

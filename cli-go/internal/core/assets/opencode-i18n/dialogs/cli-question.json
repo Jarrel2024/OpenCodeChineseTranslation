@@ -1,0 +1,12 @@
+{
+    "file": "packages/opencode/src/cli/cmd/run/footer.question.tsx",
+    "description": "问题对话框的标签、快捷键提示和自定义答案文本",
+    "replacements": {
+        "Confirm": "确认",
+        "Review": "审查",
+        "(not answered)": "(未回答)",
+        "(select all that apply)": "(可多选)",
+        "Type your own answer": "输入自定义答案",
+        "Waiting for question event...": "等待问题事件..."
+    }
+}
