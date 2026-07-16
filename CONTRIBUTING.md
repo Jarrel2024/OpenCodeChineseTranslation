@@ -130,57 +130,34 @@ const VERSION = "8.6.0"
 
 ## CI/CD 工作流
 
-本项目使用 GitHub Actions 实现自动化构建，包含两个主要工作流：
+本项目使用 GitHub Actions 实现自动化构建：
 
 ### Release (正式发布)
 
 *   **文件**: `.github/workflows/release.yml`
-*   **触发条件**: 推送 `v*` 格式的 Tag 或手动触发
+*   **触发条件**:
+    *   Schedule: 每 30 分钟检测上游 `anomalyco/opencode` 新 release
+    *   Push: 推送 `v*` 格式的 Tag
+    *   Workflow Dispatch: 手动指定 `upstream_tag` 和 `release_tag`
 *   **产物**: 正式版 Release，包含三平台二进制文件
 
 ```bash
-# 使用 release.ps1 脚本发布（推荐）
-.\release.ps1 -Version 8.4.0 -Message "新功能说明"
+# 检测上游最新 release 并构建（默认检测到新版本自动执行）
+# 手动触发构建指定版本
+gh workflow run release.yml -f upstream_tag=v1.18.2
 
-# 或手动触发
-gh workflow run release.yml -f tag_name=v8.4.0
+# 手动触发并指定发布 tag
+gh workflow run release.yml -f upstream_tag=v1.18.2 -f release_tag=v1.18.2
 ```
 
-### Nightly (自动跟进构建)
+**构建逻辑：**
 
-*   **文件**: `.github/workflows/nightly.yml`
-*   **触发条件**: 每小时检测上游，累计 ≥5 个新 commit 时自动构建
-*   **产物**: Nightly 预发布版本，自动跟进上游更新，包含官方更新日志
-
-```bash
-# 手动触发
-gh workflow run nightly.yml
-
-# 强制构建（跳过 commit 数量检测）
-gh workflow run nightly.yml -f force_build=true
-
-# 自定义阈值（例如累计 3 个 commit 就触发）
-gh workflow run nightly.yml -f min_commits=3
-```
-
-**Nightly 构建逻辑：**
-
-1. 每小时检查 `anomalyco/opencode` 的 `dev` 分支是否有新 commit
-2. 与 `.nightly-state` 文件记录的上次构建 commit 对比
-3. 计算新增 commit 数量，≥5 时触发构建
-4. 构建完成后：
+1. Schedule 触发时检查 `anomalyco/opencode` 的最新 release tag
+2. 与本地记录的 tag 对比，有新 tag 时触发构建
+3. 构建完成后：
    - 生成包含上游更新日志的 Release Notes
-   - 发布到固定 `nightly` tag（覆盖更新）
-   - 更新 `.nightly-state` 文件
-
-| 对比项 | Release | Nightly |
-|--------|---------|---------|
-| 版本号 | `v8.x.x` | `nightly` (固定) |
-| 检测频率 | 手动 | 每小时 |
-| 触发条件 | 推送 Tag | ≥5 个新 commit |
-| 稳定性 | 经过测试 | 可能不稳定 |
-| Tag | 永久保留 | 滚动覆盖 |
-| 推荐用户 | 普通用户 | 开发者/测试者 |
+   - 发布 tag（如 `v1.18.2`）
+   - 后续 schedule 检测到更新的 tag 时继续构建
 
 ---
 
