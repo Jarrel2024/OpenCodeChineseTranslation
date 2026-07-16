@@ -1,4 +1,4 @@
-name: Build
+name: 手动构建 OpenCode
 
 on:
   workflow_dispatch:

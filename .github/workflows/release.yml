@@ -1,4 +1,4 @@
-name: Release
+name: OpenCode 汉化版构建
 
 on:
   push:
