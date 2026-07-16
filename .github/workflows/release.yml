@@ -97,9 +97,9 @@ jobs:
           DISPATCH_UPSTREAM="${{ github.event.inputs.upstream_tag }}"
           DISPATCH_RELEASE="${{ github.event.inputs.release_tag }}"
           PUSH_TAG="${{ github.ref_name }}"
-          if [ -n "$SCHEDULE_TAG" ]; then echo "upstream=$SCHEDULE_TAG" >> $GITHUB_OUTPUT; echo "release=$SCHEDULE_TAG" >> $GITHUB_OUTPUT
-          elif [ -n "$DISPATCH_UPSTREAM" ]; then echo "upstream=$DISPATCH_UPSTREAM" >> $GITHUB_OUTPUT; echo "release=${DISPATCH_RELEASE:-$DISPATCH_UPSTREAM}" >> $GITHUB_OUTPUT
-          else echo "upstream=$PUSH_TAG" >> $GITHUB_OUTPUT; echo "release=$PUSH_TAG" >> $GITHUB_OUTPUT; fi
+          if [ -n "$SCHEDULE_TAG" ]; then echo "upstream=$SCHEDULE_TAG" >> $GITHUB_OUTPUT; echo "release=$SCHEDULE_TAG" >> $GITHUB_OUTPUT; echo "version=${SCHEDULE_TAG#v}" >> $GITHUB_OUTPUT
+          elif [ -n "$DISPATCH_UPSTREAM" ]; then echo "upstream=$DISPATCH_UPSTREAM" >> $GITHUB_OUTPUT; echo "release=${DISPATCH_RELEASE:-$DISPATCH_UPSTREAM}" >> $GITHUB_OUTPUT; echo "version=${DISPATCH_UPSTREAM#v}" >> $GITHUB_OUTPUT
+          else echo "upstream=$PUSH_TAG" >> $GITHUB_OUTPUT; echo "release=$PUSH_TAG" >> $GITHUB_OUTPUT; echo "version=${PUSH_TAG#v}" >> $GITHUB_OUTPUT; fi
 
       - run: |
           git clone --depth 1 --branch "${{ steps.tag.outputs.upstream }}" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN || \
@@ -114,6 +114,7 @@ jobs:
       - run: ./opencode-cli build --platform ${{ matrix.platform }} --deploy=false
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
+          OPENCODE_VERSION: ${{ steps.tag.outputs.version }}
 
       - run: |
           TAG=${{ steps.tag.outputs.release }}
