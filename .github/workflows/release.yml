@@ -131,11 +131,11 @@ jobs:
             echo "tag=${{ github.event.inputs.tag_name || github.ref_name }}" >> $GITHUB_OUTPUT
           fi
 
-      - env:
-          TAG: ${{ steps.version.outputs.tag }}
-        run: |
+      - run: |
           git clone --depth 1 --branch "$TAG" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN || \
           git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
 
       - run: python3 scripts/patch-build-ts.py opencode-zh-CN/packages/opencode/script/build.ts
 
