@@ -1,4 +1,4 @@
-name: OpenCode 汉化版构建
+name: Build OpenCode Chinese
 
 on:
   push:
