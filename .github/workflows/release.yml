@@ -140,27 +140,15 @@ jobs:
           git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
 
       - run: |
-          python3 << 'PYEOF'
-path = 'opencode-zh-CN/packages/opencode/script/build.ts'
-with open(path) as f:
-    lines = f.readlines()
-new_lines = []
-skip = 0
-for i, line in enumerate(lines):
-    if skip > 0:
-        skip -= 1
-        continue
-    stripped = line.strip()
-    if stripped == '{' and i + 3 < len(lines):
-        block = ''.join(lines[i:i+4])
-        if '"win32"' in block and '"arm64"' in block:
-            skip = 4
-            continue
-    new_lines.append(line)
-with open(path, 'w') as f:
-    f.writelines(new_lines)
+          python3 -c "
+import re
+with open('opencode-zh-CN/packages/opencode/script/build.ts') as f:
+    c = f.read()
+c = re.sub(r'\s*\{\s*\n\s*os:\s*\"win32\",\s*\n\s*arch:\s*\"arm64\",\s*\n\s*\},', '', c)
+with open('opencode-zh-CN/packages/opencode/script/build.ts', 'w') as f:
+    f.write(c)
 print('done')
-PYEOF
+"
 
       - run: ./opencode-cli apply
         env:
