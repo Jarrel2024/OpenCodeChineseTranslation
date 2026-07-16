@@ -1,8 +1,8 @@
 {
-  "file": "src/cli/cmd/tui/routes/session/header.tsx",
-  "description": "会话页头部",
+  "file": "src/cli/cmd/tui/routes/session/subagent-footer.tsx",
+  "description": "子智能体底部栏",
   "replacements": {
-    "Subagent session": "子智能体会话",
+    "label: \"Subagent\"": "label: \"子智能体\"",
     "Parent": "父会话",
     "Prev": "上一个",
     "Next": "下一个"

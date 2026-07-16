@@ -1,5 +1,5 @@
 {
-  "file": "src/cli/cmd/tui/component/dialog-command.tsx",
+  "file": "src/cli/cmd/tui/component/command-palette.tsx",
   "description": "命令对话框",
   "replacements": {
     "category: \"Suggested\"": "category: \"建议\"",

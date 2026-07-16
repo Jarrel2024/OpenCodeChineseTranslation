@@ -1,144 +1,96 @@
-name: Nightly Build
+name: Upstream Release Build
 
 on:
-  push:
-    paths:
-      - '.github/workflows/nightly.yml'
   schedule:
-    # 每小时检测一次上游更新 (改为每小时的第 16 分钟，避开整点高峰期)
-    - cron: '16 * * * *'
+    # 每30分钟检测上游是否有新 Release
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
-      force_build:
-        description: '强制构建（跳过 commit 数量检测）'
+      force_tag:
+        description: '强制构建指定上游 Release tag（如 v1.18.2）'
         required: false
-        type: boolean
-        default: false
-      min_commits:
-        description: '触发构建的最小 commit 数量'
-        required: false
-        type: number
-        default: 5
+        type: string
+        default: ''
 
 permissions:
   contents: write
 
 env:
   UPSTREAM_REPO: anomalyco/opencode
-  UPSTREAM_BRANCH: dev
-  MIN_COMMITS_THRESHOLD: 5  # 累计超过此数量才触发构建
 
 jobs:
-  check-upstream:
-    name: Check Upstream Updates
+  check-release:
+    name: Check Upstream Release
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
-      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
-      upstream_date: ${{ steps.check.outputs.upstream_date }}
-      commit_count: ${{ steps.check.outputs.commit_count }}
+      release_tag: ${{ steps.check.outputs.release_tag }}
+      release_name: ${{ steps.check.outputs.release_name }}
       changelog: ${{ steps.check.outputs.changelog }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Check for upstream updates
+      - name: Check for new upstream release
         id: check
         run: |
-          echo "=== Checking upstream updates ==="
-          
-          # 获取上游最新 commit
-          UPSTREAM_SHA=$(git ls-remote https://github.com/${{ env.UPSTREAM_REPO }}.git refs/heads/${{ env.UPSTREAM_BRANCH }} | cut -f1)
-          echo "Upstream SHA: $UPSTREAM_SHA"
-          
-          # 获取当前日期（CST）
-          UPSTREAM_DATE=$(TZ='Asia/Shanghai' date +"%Y%m%d-%H%M")
-          echo "Build timestamp: $UPSTREAM_DATE"
-          
-          # 读取上次构建的 commit SHA
-          LAST_SHA=""
-          if [ -f ".nightly-state" ]; then
-            LAST_SHA=$(cat .nightly-state | head -1)
-            echo "Last built SHA: $LAST_SHA"
+          # 强制构建模式
+          FORCE_TAG="${{ github.event.inputs.force_tag }}"
+          if [ -n "$FORCE_TAG" ]; then
+            echo "Force build for tag: $FORCE_TAG"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "release_tag=$FORCE_TAG" >> $GITHUB_OUTPUT
+            echo "release_name=OpenCode $FORCE_TAG" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 获取上游最新 Release
+          echo "Fetching latest release from ${{ env.UPSTREAM_REPO }}..."
+          UPSTREAM_RELEASE=$(curl -sL https://api.github.com/repos/${{ env.UPSTREAM_REPO }}/releases/latest)
+          LATEST_TAG=$(echo "$UPSTREAM_RELEASE" | jq -r '.tag_name')
+          LATEST_NAME=$(echo "$UPSTREAM_RELEASE" | jq -r '.name')
+          LATEST_BODY=$(echo "$UPSTREAM_RELEASE" | jq -r '.body // ""')
+          TARBALL_URL=$(echo "$UPSTREAM_RELEASE" | jq -r '.tarball_url')
+
+          echo "Latest upstream release: $LATEST_TAG"
+
+          if [ -z "$LATEST_TAG" ] || [ "$LATEST_TAG" = "null" ]; then
+            echo "No upstream release found"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 读取上次处理的 Release tag
+          LAST_TAG=""
+          if [ -f ".release-state" ]; then
+            LAST_TAG=$(cat .release-state | head -1)
+            echo "Last processed release: $LAST_TAG"
           else
-            echo "No previous build state found"
+            echo "No previous release state found"
           fi
-          
-          # 获取 commit 数量阈值
-          MIN_COMMITS=${{ github.event.inputs.min_commits || env.MIN_COMMITS_THRESHOLD }}
-          echo "Min commits threshold: $MIN_COMMITS"
-          
-          # 判断是否需要构建
-          SHOULD_BUILD="false"
-          COMMIT_COUNT=0
-          CHANGELOG=""
-          
-          if [ "${{ github.event.inputs.force_build }}" == "true" ]; then
-            echo "Force build requested"
-            SHOULD_BUILD="true"
-          elif [ -z "$LAST_SHA" ]; then
-            echo "First nightly build"
-            SHOULD_BUILD="true"
-          elif [ "$UPSTREAM_SHA" != "$LAST_SHA" ]; then
-            echo "Upstream has new commits, calculating diff..."
-            
-            # Clone 上游仓库获取详细信息
-            git clone --depth 200 --branch ${{ env.UPSTREAM_BRANCH }} https://github.com/${{ env.UPSTREAM_REPO }}.git /tmp/upstream 2>/dev/null || true
-            
-            if [ -d "/tmp/upstream" ]; then
-              cd /tmp/upstream
-              
-              # 计算 commit 差异数量
-              COMMIT_COUNT=$(git rev-list --count $LAST_SHA..$UPSTREAM_SHA 2>/dev/null || echo "0")
-              echo "New commits since last build: $COMMIT_COUNT"
-              
-              # 判断是否达到阈值
-              if [ "$COMMIT_COUNT" -ge "$MIN_COMMITS" ]; then
-                echo "Commit count ($COMMIT_COUNT) >= threshold ($MIN_COMMITS), triggering build"
-                SHOULD_BUILD="true"
-                
-                # 生成 changelog (最多 50 条)
-                CHANGELOG=$(git log $LAST_SHA..$UPSTREAM_SHA --format="- %s (\`%h\`)" | head -50)
-              else
-                echo "Commit count ($COMMIT_COUNT) < threshold ($MIN_COMMITS), skipping build"
-              fi
-              
-              cd -
-            else
-              echo "Failed to clone upstream, triggering build anyway"
-              SHOULD_BUILD="true"
-            fi
+
+          # 判断是否为新 Release
+          if [ "$LATEST_TAG" != "$LAST_TAG" ]; then
+            echo "New upstream release detected: $LATEST_TAG"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "release_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+            echo "release_name=$LATEST_NAME" >> $GITHUB_OUTPUT
+
+            # 截取 Release body 前 5000 字符作为 changelog
+            BODY_CUT=$(echo "$LATEST_BODY" | head -c 5000)
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$BODY_CUT" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           else
-            echo "No updates detected (SHA unchanged)"
+            echo "No new upstream release (latest: $LATEST_TAG already processed)"
+            echo "should_build=false" >> $GITHUB_OUTPUT
           fi
-          
-          # 如果强制构建但没有 changelog，生成最近的 changelog
-          if [ "$SHOULD_BUILD" == "true" ] && [ -z "$CHANGELOG" ] && [ -d "/tmp/upstream" ]; then
-            cd /tmp/upstream
-            CHANGELOG=$(git log -20 --format="- %s (\`%h\`)")
-            cd -
-          fi
-          
-          echo "should_build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
-          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
-          echo "upstream_date=$UPSTREAM_DATE" >> $GITHUB_OUTPUT
-          echo "commit_count=$COMMIT_COUNT" >> $GITHUB_OUTPUT
-          
-          # Changelog 可能很长，使用多行输出
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          
-          echo "=== Check complete ==="
-          echo "Should build: $SHOULD_BUILD"
 
   build-cli:
     name: Build CLI Tool
     runs-on: ubuntu-latest
-    needs: check-upstream
-    if: needs.check-upstream.outputs.should_build == 'true'
+    needs: check-release
+    if: needs.check-release.outputs.should_build == 'true'
     strategy:
       matrix:
         include:
@@ -178,8 +130,8 @@ jobs:
   build-opencode:
     name: Build OpenCode Chinese
     runs-on: ubuntu-latest
-    needs: [check-upstream, build-cli]
-    if: needs.check-upstream.outputs.should_build == 'true'
+    needs: [check-release, build-cli]
+    if: needs.check-release.outputs.should_build == 'true'
     strategy:
       matrix:
         include:
@@ -214,9 +166,12 @@ jobs:
           cd cli-go
           go build -o ../opencode-cli .
 
-      - name: Clone OpenCode source
+      - name: Clone upstream source at release tag
         run: |
-          git clone --depth 1 --branch ${{ env.UPSTREAM_BRANCH }} https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
+          TAG=${{ needs.check-release.outputs.release_tag }}
+          echo "Cloning upstream at tag: $TAG"
+          git clone --depth 1 --branch "$TAG" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN 2>/dev/null || \
+          git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
 
       - name: Apply Chinese translation
         env:
@@ -233,39 +188,30 @@ jobs:
           echo "OPENCODE_SOURCE_DIR: $OPENCODE_SOURCE_DIR"
           echo "Bun version: $(bun --version)"
           echo ""
-          echo "=== Upstream repo structure ==="
-          ls -la opencode-zh-CN/ || true
-          ls -la opencode-zh-CN/packages/ || true
-          echo ""
           echo "=== Starting build ==="
           ./opencode-cli build --platform ${{ matrix.platform }} --deploy=false
-          echo ""
-          echo "=== Post-build: dist directory ==="
-          find opencode-zh-CN/packages/opencode/dist -type f 2>/dev/null | head -30 || echo "dist directory not found"
 
       - name: Package
-        env:
-          NIGHTLY_DATE: ${{ needs.check-upstream.outputs.upstream_date }}
         run: |
-          VERSION="nightly"
+          TAG=${{ needs.check-release.outputs.release_tag }}
           PLATFORM=${{ matrix.platform }}
-          PACKAGE_NAME="opencode-zh-CN-${VERSION}-${PLATFORM}"
-          
+          PACKAGE_NAME="opencode-zh-CN-${TAG}-${PLATFORM}"
+
           echo "=== Packaging ${PACKAGE_NAME} ==="
-          
+
           BUILD_DIR="opencode-zh-CN/packages/opencode/dist/opencode-${PLATFORM}/bin"
-          
+
           echo "Looking for build artifacts in: ${BUILD_DIR}"
           ls -la ${BUILD_DIR}/ || echo "Build dir not found"
-          
+
           mkdir -p dist
-          
+
           if [ "$PLATFORM" == "windows-x64" ]; then
             BINARY="${BUILD_DIR}/opencode.exe"
           else
             BINARY="${BUILD_DIR}/opencode"
           fi
-          
+
           if [ -f "$BINARY" ]; then
             zip -j dist/${PACKAGE_NAME}.zip "$BINARY"
             echo "✓ Created dist/${PACKAGE_NAME}.zip"
@@ -283,15 +229,22 @@ jobs:
           path: dist/*.zip
 
   release:
-    name: Create/Update Nightly Release
-    needs: [check-upstream, build-cli, build-opencode]
-    if: needs.check-upstream.outputs.should_build == 'true'
+    name: Create Release
+    needs: [check-release, build-cli, build-opencode]
+    if: needs.check-release.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Get Build Timestamp
+        id: date
+        env:
+          TZ: 'Asia/Shanghai'
+        run: echo "timestamp=$(date +'%Y-%m-%d %H:%M CST')" >> $GITHUB_OUTPUT
 
       - name: Download CLI Artifacts
         uses: actions/download-artifact@v4
@@ -315,7 +268,8 @@ jobs:
 
       - name: Package i18n tool
         run: |
-          zip -r dist/opencode-i18n-tool-nightly.zip \
+          TAG=${{ needs.check-release.outputs.release_tag }}
+          zip -r dist/opencode-i18n-tool-${TAG}.zip \
             cli-go/ \
             install.ps1 \
             install.sh \
@@ -326,131 +280,94 @@ jobs:
 
       - name: Generate Release Notes
         env:
-          NIGHTLY_DATE: ${{ needs.check-upstream.outputs.upstream_date }}
-          UPSTREAM_SHA: ${{ needs.check-upstream.outputs.upstream_sha }}
-          COMMIT_COUNT: ${{ needs.check-upstream.outputs.commit_count }}
-          CHANGELOG: ${{ needs.check-upstream.outputs.changelog }}
+          RELEASE_TAG: ${{ needs.check-release.outputs.release_tag }}
+          RELEASE_NAME: ${{ needs.check-release.outputs.release_name }}
+          UPSTREAM_CHANGELOG: ${{ needs.check-release.outputs.changelog }}
         run: |
+          TIMESTAMP="${{ steps.date.outputs.timestamp }}"
+          VERSION=$RELEASE_TAG
+
           cat > release_notes.md << 'EOF'
-          ## 🌙 Nightly Build - 自动跟进上游更新
-          
-          > ⚠️ **警告**: 这是自动构建版本，可能包含未经充分测试的功能，不建议在生产环境使用。
-          > 如需稳定版本，请前往 [Releases](https://github.com/1186258278/OpenCodeChineseTranslation/releases) 页面下载正式版。
-          
-          ---
-          
-          ### 📊 构建信息
-          
-          | 项目 | 值 |
-          |------|-----|
-          EOF
-          
-          echo "| 上游分支 | \`${{ env.UPSTREAM_BRANCH }}\` |" >> release_notes.md
-          echo "| 上游 Commit | [\`${UPSTREAM_SHA:0:8}\`](https://github.com/${{ env.UPSTREAM_REPO }}/commit/$UPSTREAM_SHA) |" >> release_notes.md
-          echo "| 本次包含 Commits | ${COMMIT_COUNT:-unknown} |" >> release_notes.md
-          echo "| 构建时间 | $(TZ='Asia/Shanghai' date +"%Y-%m-%d %H:%M CST") |" >> release_notes.md
-          
-          cat >> release_notes.md << 'EOF'
-          
-          ---
-          
+          ## OpenCode 中文汉化版
+
+          > 根据上游 Release 自动构建
+
           ### 📦 下载
-          
+
           | 平台 | 管理工具 (CLI) | 汉化版 OpenCode |
           |------|----------------|-----------------|
-          | Windows x64 | `opencode-cli-windows-amd64.exe` | `opencode-zh-CN-nightly-windows-x64.zip` |
-          | macOS Apple Silicon | `opencode-cli-darwin-arm64` | `opencode-zh-CN-nightly-darwin-arm64.zip` |
-          | macOS Intel | `opencode-cli-darwin-amd64` | `opencode-zh-CN-nightly-darwin-x64.zip` |
-          | Linux x64 | `opencode-cli-linux-amd64` | `opencode-zh-CN-nightly-linux-x64.zip` |
-          | Linux ARM64 | `opencode-cli-linux-arm64` | `opencode-zh-CN-nightly-linux-arm64.zip` |
-          
-          > ⚠️ **注意**: Windows ARM64 暂不支持（Bun 尚未提供官方 Windows ARM64 构建）
-          
-          ---
-          
-          ### 📝 OpenCode 官方更新日志
-          
-          以下是本次构建包含的上游更新：
-          
           EOF
-          
-          if [ -n "$CHANGELOG" ]; then
-            echo "$CHANGELOG" >> release_notes.md
-          else
-            echo "_无法获取更新日志_" >> release_notes.md
-          fi
-          
+
+          echo "| Windows x64 | \`opencode-cli-windows-amd64.exe\` | \`opencode-zh-CN-${VERSION}-windows-x64.zip\` |" >> release_notes.md
+          echo "| macOS Apple Silicon | \`opencode-cli-darwin-arm64\` | \`opencode-zh-CN-${VERSION}-darwin-arm64.zip\` |" >> release_notes.md
+          echo "| macOS Intel | \`opencode-cli-darwin-amd64\` | \`opencode-zh-CN-${VERSION}-darwin-x64.zip\` |" >> release_notes.md
+          echo "| Linux x64 | \`opencode-cli-linux-amd64\` | \`opencode-zh-CN-${VERSION}-linux-x64.zip\` |" >> release_notes.md
+          echo "| Linux ARM64 | \`opencode-cli-linux-arm64\` | \`opencode-zh-CN-${VERSION}-linux-arm64.zip\` |" >> release_notes.md
+
           cat >> release_notes.md << 'EOF'
-          
+
+          > ⚠️ Windows ARM64 暂不支持（Bun 尚未提供官方 Windows ARM64 构建）
+
+          ### 🚀 快速安装
+
+          **Windows (PowerShell)**
+          ```powershell
+          powershell -c "irm https://cdn.jsdelivr.net/gh/1186258278/OpenCodeChineseTranslation@main/install.ps1 | iex"
+          ```
+
+          **Linux / macOS**
+          ```bash
+          curl -fsSL https://cdn.jsdelivr.net/gh/1186258278/OpenCodeChineseTranslation@main/install.sh | bash
+          ```
+
           ---
-          
-          ### 🔄 自动更新机制
-          
-          - **检测频率**: 每小时检测一次上游更新
-          - **触发条件**: 累计 ≥5 个新 commit 时自动构建
-          - **更新方式**: 固定 `nightly` tag，每次构建覆盖更新
-          
-          > 💡 此 Release 会持续更新，下载链接始终指向最新构建。
           EOF
-          
+
+          echo "" >> release_notes.md
+          echo "### 📝 上游更新日志" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "$UPSTREAM_CHANGELOG" >> release_notes.md
+
           echo "=== Generated Release Notes ==="
           cat release_notes.md
 
-      - name: Delete old nightly release
-        uses: dev-drprasad/delete-older-releases@v0.3.4
-        with:
-          keep_latest: 0
-          delete_tag_pattern: nightly
-          delete_tags: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Create Nightly Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nightly
-          name: "🌙 Nightly Build (自动更新)"
+          tag_name: ${{ needs.check-release.outputs.release_tag }}
+          name: "OpenCode ${{ needs.check-release.outputs.release_tag }} 汉化版 (${{ steps.date.outputs.timestamp }})"
           body_path: release_notes.md
           files: |
             dist/*
           draft: false
-          prerelease: true
-          make_latest: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update nightly state
+      - name: Update release state
         env:
-          UPSTREAM_SHA: ${{ needs.check-upstream.outputs.upstream_sha }}
+          RELEASE_TAG: ${{ needs.check-release.outputs.release_tag }}
         run: |
-          echo "$UPSTREAM_SHA" > .nightly-state
-          echo "Updated .nightly-state with SHA: $UPSTREAM_SHA"
-          
-          # 提交状态文件
+          echo "$RELEASE_TAG" > .release-state
+          echo "Updated .release-state with tag: $RELEASE_TAG"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .nightly-state
-          git commit -m "chore: update nightly build state [skip ci]
+          git add .release-state
+          git commit -m "chore: update release build state [skip ci]
 
-          Upstream: ${{ env.UPSTREAM_REPO }}@${UPSTREAM_SHA:0:8}
-          Commits: ${{ needs.check-upstream.outputs.commit_count }}" || echo "No changes to commit"
+          Upstream: ${{ env.UPSTREAM_REPO }}@$RELEASE_TAG" || echo "No changes to commit"
           git push || echo "Push failed, state will be updated on next run"
 
   notify-skip:
-    name: Report Skip Reason
+    name: Report Skip
     runs-on: ubuntu-latest
-    needs: check-upstream
-    if: needs.check-upstream.outputs.should_build != 'true'
+    needs: check-release
+    if: needs.check-release.outputs.should_build != 'true'
     steps:
       - name: Report status
-        env:
-          COMMIT_COUNT: ${{ needs.check-upstream.outputs.commit_count }}
         run: |
-          echo "=== Nightly Build Skipped ==="
-          echo "Reason: Not enough new commits"
-          echo "Current new commits: ${COMMIT_COUNT:-0}"
-          echo "Threshold: ${{ env.MIN_COMMITS_THRESHOLD }}"
-          echo ""
-          echo "Build will trigger when upstream has ≥${{ env.MIN_COMMITS_THRESHOLD }} new commits."
-          echo "You can also manually trigger with 'force_build=true' to skip this check."
+          echo "=== Upstream Release Build Skipped ==="
+          echo "No new upstream release detected."
+          echo "Workflow runs every 30 minutes to check for new releases."
+          echo "You can also manually trigger with 'force_tag' input."

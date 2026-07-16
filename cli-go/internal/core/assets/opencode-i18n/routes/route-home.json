@@ -1,12 +1,8 @@
 {
-  "file": "src/cli/cmd/tui/routes/home.tsx",
+  "file": "packages/tui/src/feature-plugins/home/tips.tsx",
   "description": "首页",
   "replacements": {
-    "title: tipsHidden() ? \"Show tips\" : \"Hide tips\"": "title: tipsHidden() ? \"显示提示\" : \"隐藏提示\"",
-    "mcp errors": "MCP错误",
-    "{} mcp server": "{} mcp服务器",
-    "{} mcp servers": "{} mcp服务器",
-    "/status": "/状态",
+    "title: props.hidden ? \"Show tips\" : \"Hide tips\"": "title: props.hidden ? \"显示提示\" : \"隐藏提示\"",
     "category: \"System\"": "category: \"系统\""
   }
 }

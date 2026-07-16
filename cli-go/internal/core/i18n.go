@@ -196,15 +196,20 @@ type ApplyResult struct {
 
 // GetTargetFilePath 获取汉化配置对应的目标文件完整路径
 // 统一 verify 和 apply 的路径处理逻辑
+// opencode 1.18.2+ 将 TUI 代码从 packages/opencode/src/cli/cmd/tui/ 移到 packages/tui/src/
 func (i *I18n) GetTargetFilePath(config TranslationConfig) string {
 	if config.File == "" {
 		return ""
 	}
 
 	relativePath := config.File
-	// 如果路径不以 packages/ 开头，自动添加 packages/opencode/ 前缀
 	if !strings.HasPrefix(relativePath, "packages/") {
-		relativePath = filepath.Join("packages", "opencode", relativePath)
+		if strings.HasPrefix(relativePath, "src/cli/cmd/tui/") {
+			rest := strings.TrimPrefix(relativePath, "src/cli/cmd/tui/")
+			relativePath = filepath.Join("packages", "tui", "src", rest)
+		} else {
+			relativePath = filepath.Join("packages", "opencode", relativePath)
+		}
 	}
 
 	return filepath.Join(i.opencodeDir, relativePath)

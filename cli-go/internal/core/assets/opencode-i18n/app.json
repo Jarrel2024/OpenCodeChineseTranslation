@@ -1,5 +1,5 @@
 {
-  "file": "src/cli/cmd/tui/app.tsx",
+  "file": "packages/tui/src/app.tsx",
   "description": "应用主入口",
   "replacements": {
     "title: \"Exit the app\"": "title: \"退出应用\""

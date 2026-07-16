@@ -8,15 +8,20 @@ on:
     inputs:
       tag_name:
         description: 'Tag name for release (e.g., v8.1.0)'
-        required: true
+        required: false
+        type: string
+      upstream_tag:
+        description: 'Upstream release tag to build from (e.g., v1.18.2)'
+        required: false
         type: string
 
 permissions:
   contents: write
 
 env:
-  # 使用手动输入或 git tag
+  UPSTREAM_REPO: anomalyco/opencode
   TAG_NAME: ${{ github.event.inputs.tag_name || github.ref_name }}
+  UPSTREAM_TAG: ${{ github.event.inputs.upstream_tag || '' }}
 
 jobs:
   build-cli:
@@ -25,22 +30,10 @@ jobs:
     strategy:
       matrix:
         include:
-          # Windows
           - os: windows
             arch: amd64
             ext: .exe
-          - os: windows
-            arch: arm64
-            ext: .exe
-          # Linux
           - os: linux
-            arch: amd64
-            ext: ""
-          - os: linux
-            arch: arm64
-            ext: ""
-          # macOS
-          - os: darwin
             arch: amd64
             ext: ""
           - os: darwin
@@ -54,13 +47,12 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: cli-go/go.mod
-          cache-dependency-path: cli-go/go.sum
 
       - name: Build CLI
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
-          CGO_ENABLED: 0  # 禁用 CGO 以实现静态链接，解决 GLIBC 兼容性问题
+          CGO_ENABLED: 0
         run: |
           cd cli-go
           go build -ldflags="-s -w" -o ../dist/opencode-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} .
@@ -74,7 +66,7 @@ jobs:
   build-opencode:
     name: Build OpenCode Chinese
     runs-on: ubuntu-latest
-    needs: build-cli  # 需要先编译 CLI
+    needs: build-cli
     strategy:
       matrix:
         include:
@@ -98,7 +90,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: cli-go/go.mod
-          cache-dependency-path: cli-go/go.sum
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -110,9 +101,15 @@ jobs:
           cd cli-go
           go build -o ../opencode-cli .
 
-      - name: Clone OpenCode source
+      - name: Clone upstream source
         run: |
-          git clone --depth 1 --branch dev https://github.com/anomalyco/opencode.git opencode-zh-CN
+          if [ -n "${{ env.UPSTREAM_TAG }}" ]; then
+            echo "Cloning upstream at tag: ${{ env.UPSTREAM_TAG }}"
+            git clone --depth 1 --branch "${{ env.UPSTREAM_TAG }}" https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
+          else
+            echo "Cloning upstream dev branch"
+            git clone --depth 1 --branch dev https://github.com/${{ env.UPSTREAM_REPO }}.git opencode-zh-CN
+          fi
 
       - name: Apply Chinese translation
         env:
@@ -128,36 +125,34 @@ jobs:
 
       - name: Package
         run: |
-          VERSION=${{ env.TAG_NAME }}
+          VERSION=${{ env.UPSTREAM_TAG }}
+          if [ -z "$VERSION" ]; then
+            VERSION=${{ env.TAG_NAME }}
+          fi
           PLATFORM=${{ matrix.platform }}
           PACKAGE_NAME="opencode-zh-CN-${VERSION}-${PLATFORM}"
-          
+
           echo "=== Packaging ${PACKAGE_NAME} ==="
-          
-          # 构建产物的实际路径
-          # opencode-zh-CN/packages/opencode/dist/opencode-{platform}/bin/
+
           BUILD_DIR="opencode-zh-CN/packages/opencode/dist/opencode-${PLATFORM}/bin"
-          
+
           echo "Looking for build artifacts in: ${BUILD_DIR}"
           ls -la ${BUILD_DIR}/ || echo "Build dir not found"
-          
-          # 确保输出目录存在
+
           mkdir -p dist
-          
-          # 检查构建产物并打包
-          if [[ "$PLATFORM" == "windows-x64" || "$PLATFORM" == "windows-arm64" ]]; then
+
+          if [ "$PLATFORM" == "windows-x64" ]; then
             BINARY="${BUILD_DIR}/opencode.exe"
           else
             BINARY="${BUILD_DIR}/opencode"
           fi
-          
+
           if [ -f "$BINARY" ]; then
             zip -j dist/${PACKAGE_NAME}.zip "$BINARY"
             echo "✓ Created dist/${PACKAGE_NAME}.zip"
             ls -la dist/
           else
             echo "❌ Binary not found: $BINARY"
-            echo "=== Searching for opencode binaries ==="
             find opencode-zh-CN -name "opencode*" -type f 2>/dev/null | head -20
             exit 1
           fi

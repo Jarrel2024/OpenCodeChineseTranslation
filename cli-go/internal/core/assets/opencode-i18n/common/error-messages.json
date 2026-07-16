@@ -1,12 +1,12 @@
 {
-  "file": "src/cli/cmd/tui/app.tsx",
+  "file": "packages/tui/src/app.tsx",
   "description": "提示消息",
   "replacements": {
     "message: \"The current session was deleted\"": "message: \"当前会话已删除\"",
     "message: \"Copied to clipboard\"": "message: \"已复制到剪贴板\"",
-    "return \"An error occurred\"": "return \"发生错误\"",
-    "title: \"Update Available\"": "title: \"有可用更新\"",
-    "\"Warning\"": "\"警告\""
+    "`Update Available`": "`有可用更新`",
+    "title: \"Update Failed\"": "title: \"更新失败\"",
+    "message: \"Update failed\"": "message: \"更新失败\""
   },
-  "note": "Update Complete 在源代码中不存在，已移除"
+  "note": "已移除不再存在于源代码中的条目: return An error occurred"
 }
