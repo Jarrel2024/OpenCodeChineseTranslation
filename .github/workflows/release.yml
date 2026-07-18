@@ -145,6 +145,11 @@ jobs:
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
 
+      - name: Verify system prompt null guard
+        run: |
+          grep -F 'reference !== undefined && reference.description !== undefined' \
+            opencode-zh-CN/packages/opencode/src/session/system.ts
+
       - run: ./opencode-cli build --platform ${{ matrix.platform }} --deploy=false
         env:
           OPENCODE_SOURCE_DIR: ${{ github.workspace }}/opencode-zh-CN
