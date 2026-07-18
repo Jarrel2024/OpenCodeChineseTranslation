@@ -391,6 +391,37 @@ func TestApplyConfig_CRLFNormalization(t *testing.T) {
 	}
 }
 
+func TestSystemPromptRuleSkipsMissingReferences(t *testing.T) {
+	config, err := LoadI18nConfig(filepath.Join("assets", "opencode-i18n", "common", "system-prompt.json"))
+	if err != nil {
+		t.Fatalf("加载系统提示词修复规则失败: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	targetPath := filepath.Join(tmpDir, "packages", "opencode", "src", "session", "system.ts")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+	const original = "return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)"
+	if err := os.WriteFile(targetPath, []byte(original), 0644); err != nil {
+		t.Fatalf("创建目标文件失败: %v", err)
+	}
+
+	i18n := &I18n{opencodeDir: tmpDir}
+	result := i18n.ApplyConfig(*config, false)
+	if result.Replacements.Success != 1 {
+		t.Fatalf("系统提示词修复规则未应用: %+v", result.Replacements)
+	}
+
+	content, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("读取修复后的文件失败: %v", err)
+	}
+	if !strings.Contains(string(content), "reference !== undefined && reference.description !== undefined") {
+		t.Errorf("系统提示词未过滤空引用: %s", content)
+	}
+}
+
 // ========== 辅助函数测试 ==========
 
 func TestDirExists(t *testing.T) {
