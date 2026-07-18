@@ -247,9 +247,15 @@ func (b *Builder) Build(platform string, silent bool) error {
 		return err
 	}
 
+	env := os.Environ()
+
+	// 确保 OPENCODE_CHANNEL 默认设为 "latest"（避免 detached HEAD 导致 channel 为空，从而使用 opencode-.db）
+	if _, exists := os.LookupEnv("OPENCODE_CHANNEL"); !exists {
+		env = append(env, "OPENCODE_CHANNEL=latest")
+	}
+
 	// 尝试绕过 SSL 验证错误
 	// 这是一个临时修复，因为 models.dev 的证书在某些环境中可能验证失败
-	env := os.Environ()
 	env = append(env, "BUN_TLS_REJECT_UNAUTHORIZED=0")
 	env = append(env, "NODE_TLS_REJECT_UNAUTHORIZED=0")
 
