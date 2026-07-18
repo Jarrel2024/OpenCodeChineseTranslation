@@ -1,0 +1,7 @@
+{
+    "file": "packages/opencode/src/session/system.ts",
+    "description": "修复嵌套 yield* 反模式，避免 Effect 运行时内部迭代器异常",
+    "replacements": {
+        "return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)": "const refService = yield* Reference.Service\nconst refs = yield* refService.list()\nreturn refs.filter((reference) => reference.description !== undefined)"
+    }
+}
